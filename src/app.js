@@ -31,14 +31,14 @@ app.get("/transacoes", (req, res));
 const transactions = [
   {
     id: 1,
-    date: "30/11",
+    date: "03/07",
     description: "Almoço",
     value: 120.5,
     deposit: false,
   },
-  { id: 2, date: "15/11", description: "Salário", value: 3000, deposit: true },
-  { id: 3, date: "20/11", description: "Sushi", value: 49.9, deposit: false },
-  { id: 4, date: "13/11", description: "Bônus", value: 500, deposit: true },
+  { id: 2, date: "03/07", description: "Salário", value: 3000, deposit: true },
+  { id: 3, date: "03/07", description: "Sushi", value: 49.9, deposit: false },
+  { id: 4, date: "04/07", description: "Bônus", value: 500, deposit: true },
 ];
 
 app.post("/nova-transacao/:tipo", async (req, res) => {
