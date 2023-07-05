@@ -5,6 +5,7 @@ import { MongoClient } from "mongodb";
 import joi from "joi";
 import dayjs from "dayjs";
 import bcrypt from "bcrypt";
+import { v4 as uuid } from "uuid";
 
 dotenv.config();
 
@@ -61,13 +62,16 @@ app.post("/sign-in", async (req, res) => {
     if (!user) return res.sendStatus(401);
     if (!bcrypt.compareSync(password, user.password))
       return res.sendStatus(401);
-    res.sendStatus(200);
+
+    const token = uuid();
+    await db.collection("sessions").insertOne({ userId: user._id, token });
+    res.status(200).send(token);
   } catch (err) {
     res.status(500).send(err.message);
   }
 });
 
-const transactions1 = [
+/* const transactions1 = [
   {
     id: 1,
     date: "03/07",
@@ -79,45 +83,82 @@ const transactions1 = [
   { id: 3, date: "03/07", description: "Sushi", value: 49.9, deposit: false },
   { id: 4, date: "04/07", description: "Bônus", value: 500, deposit: true },
 ];
-
+ */
 app.post("/nova-transacao/:tipo", async (req, res) => {
   const { description, value, deposit } = req.body;
 
-  const schemaTransaction = joi.object({
-    description: joi.string().required(),
-    value: joi.number().required(),
-    deposit: joi.boolean().required(),
+  const { authorization } = req.headers;
+  console.log(authorization);
+  const token = authorization?.replace("Bearer ", "");
+
+  if (!token) return res.sendStatus(401);
+
+  const session = await db.collection("sessions").findOne({ token });
+  if (!session) return res.sendStatus(401);
+
+  const user = await db.collection("users").findOne({
+    _id: session.userId,
   });
 
-  const validation = schemaTransaction.validate(req.body, {
-    abortEarly: false,
-  });
+  if (user) {
+    const schemaTransaction = joi.object({
+      description: joi.string().required(),
+      value: joi.number().required(),
+      deposit: joi.boolean().required(),
+    });
 
-  if (validation.error) {
-    const errors = validation.error.details.map((detail) => detail.message);
-    return res.status(422).send(errors);
-  }
+    const validation = schemaTransaction.validate(req.body, {
+      abortEarly: false,
+    });
 
-  const newTransaction = {
-    date: currentTime,
-    description,
-    value,
-    deposit,
-  };
+    if (validation.error) {
+      const errors = validation.error.details.map((detail) => detail.message);
+      return res.status(422).send(errors);
+    }
 
-  try {
-    await db.collection("transactions").insertOne(newTransaction);
-    res.sendStatus(201);
-  } catch (err) {
-    res.status(500).send(err.message);
+    const newTransaction = {
+      userId: user._id,
+      date: currentTime,
+      description,
+      value,
+      deposit,
+    };
+
+    try {
+      await db.collection("transactions").insertOne(newTransaction);
+      res.sendStatus(201);
+    } catch (err) {
+      res.status(500).send(err.message);
+    }
+  } else {
+    res.sendStatus(401);
   }
 });
+
 app.get("/transactions", async (req, res) => {
-  try {
-    const transactions = await db.collection("transactions").find().toArray();
-    res.send(transactions);
-  } catch (err) {
-    res.status(500).send(err.message);
+  const { authorization } = req.headers;
+  const token = authorization?.replace("Bearer ", "");
+
+  if (!token) return res.sendStatus(401);
+
+  const session = await db.collection("sessions").findOne({ token });
+  if (!session) return res.sendStatus(401);
+
+  const user = await db.collection("users").findOne({
+    _id: session.userId,
+  });
+  if (user) {
+    try {
+      const transactions = await db
+        .collection("transactions")
+        .find({ userId: user._id })
+        .toArray();
+      res.send(transactions);
+    } catch (err) {
+      res.status(500).send(err.message);
+    }
+  } else {
+    res.send(401);
   }
 });
 
