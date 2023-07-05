@@ -2,8 +2,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
-import Joi from "joi";
+import joi from "joi";
 import dayjs from "dayjs";
+import bcrypt from "bcrypt";
 
 dotenv.config();
 
@@ -22,13 +23,51 @@ mongoClient
   .then(() => (db = mongoClient.db()))
   .catch((err) => console.log(err.message));
 
-/* app.post("/login", async(req, res));
-app.post("/cadastro", async(req, res));
+const userSchema = joi.object({
+  name: joi.string().required(),
+  email: joi.string().email().required(),
+  password: joi.string().required(),
+});
 
-app.get("/transacoes", (req, res));
- */
+app.post("/sign-up", async (req, res) => {
+  // nome, email e senha
+  const { name, email, password } = req.body;
 
-const transactions = [
+  const validation = userSchema.validate(req.body, { abortEarly: false });
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
+
+  try {
+    const user = await db.collection("users").findOne({ email });
+    if (user) return res.status(409).send("E-mail já cadastrado");
+
+    const hash = bcrypt.hashSync(password, 10);
+
+    await db.collection("users").insertOne({ name, email, password: hash });
+    res.sendStatus(201);
+  } catch (err) {
+    return res.status(500).send(err.message);
+  }
+});
+
+app.post("/sign-in", async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await db.collection("users").findOne({ email });
+
+    if (!user) return res.sendStatus(401);
+    if (!bcrypt.compareSync(password, user.password))
+      return res.sendStatus(401);
+    res.sendStatus(200);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+const transactions1 = [
   {
     id: 1,
     date: "03/07",
@@ -43,19 +82,43 @@ const transactions = [
 
 app.post("/nova-transacao/:tipo", async (req, res) => {
   const { description, value, deposit } = req.body;
+
+  const schemaTransaction = joi.object({
+    description: joi.string().required(),
+    value: joi.number().required(),
+    deposit: joi.boolean().required(),
+  });
+
+  const validation = schemaTransaction.validate(req.body, {
+    abortEarly: false,
+  });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
+
   const newTransaction = {
-    id: transactions.length + 1,
     date: currentTime,
     description,
     value,
     deposit,
   };
 
-  transactions.push(newTransaction);
-  res.send(newTransaction);
+  try {
+    await db.collection("transactions").insertOne(newTransaction);
+    res.sendStatus(201);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
-app.get("/transactions", (req, res) => {
-  res.send(transactions);
+app.get("/transactions", async (req, res) => {
+  try {
+    const transactions = await db.collection("transactions").find().toArray();
+    res.send(transactions);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
 
 const PORT = 5000;
