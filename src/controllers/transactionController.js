@@ -23,7 +23,7 @@ export const newTransaction = async (req, res) => {
   if (user) {
     const schemaTransaction = joi.object({
       description: joi.string().required(),
-      value: joi.number().required(),
+      value: joi.number().required().positive().greater(0),
       deposit: joi.boolean().required(),
     });
 
